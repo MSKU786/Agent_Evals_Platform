@@ -1,7 +1,7 @@
 import { execFile, spawn } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { promisify } from "node:util";
 import { Injectable, Logger } from "@nestjs/common";
 import {
@@ -19,10 +19,49 @@ import { renderHermesConfig } from "./render-config";
 const exec = promisify(execFile);
 
 const IMAGE = process.env.HERMES_IMAGE ?? "nousresearch/hermes-agent:v2026.9.24";
-const REPO_ROOT = process.env.REPO_ROOT ?? join(process.cwd());
+
+/**
+ * Repo root, found by walking up from this file until `spike/inspect_statedb.py`
+ * is seen. `process.cwd()` is wrong here: the worker runs from `apps/api`, so the
+ * inspector (at the repo root's `spike/`) would not be found.
+ */
+function findRepoRoot(): string {
+  let dir = __dirname;
+  for (let i = 0; i < 8; i++) {
+    if (existsSync(join(dir, "spike", "inspect_statedb.py"))) return dir;
+    const parent = dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  return process.cwd();
+}
+
+const REPO_ROOT = process.env.REPO_ROOT ?? findRepoRoot();
 const INSPECTOR = join(REPO_ROOT, "spike", "inspect_statedb.py");
 // Dirs searched for a preloaded skill named in the config.
 const SKILL_DIRS = [join(REPO_ROOT, "skills"), join(REPO_ROOT, "spike", "skills")];
+// Writable sandbox the terminal tool runs in (its default cwd `/` is root-owned
+// and read-only — see docs/hermes-findings.md). Seeded and chowned per trial.
+const WORKDIR = "/opt/data/work";
+
+// Which .env var holds each provider's key. Keeping it a plain map (not a
+// provider framework) means switching the whole experiment to another provider
+// is a one-line config/env change, not a code edit. See docs/DESIGN.md.
+const PROVIDER_ENV: Record<string, string> = {
+  gemini: "GEMINI_API_KEY",
+  openrouter: "OPENROUTER_API_KEY",
+};
+
+/** The env var Hermes reads for a config's provider; throws if unmapped. */
+function providerKeyEnv(provider: string): string {
+  const name = PROVIDER_ENV[provider.toLowerCase()];
+  if (!name) {
+    throw new Error(
+      `No API-key env mapping for provider "${provider}" (add it to PROVIDER_ENV)`,
+    );
+  }
+  return name;
+}
 
 /**
  * Real runner: one isolated `hermes chat -q --oneshot` per trial in a throwaway
@@ -43,6 +82,16 @@ export class HermesCliRunner implements AgentRunner {
     const env = { ...process.env, MSYS_NO_PATHCONV: "1", MSYS2_ARG_CONV_EXCL: "*" };
 
     try {
+      // Pick the key env for this config's provider; a missing key is a clear
+      // failed trial, not a silent mid-run fallback (we hold one variable
+      // constant across the experiment).
+      const keyEnv = providerKeyEnv(configSpec.provider);
+      if (!env[keyEnv]?.trim()) {
+        throw new Error(
+          `${keyEnv} is not set in .env (required for provider "${configSpec.provider}")`,
+        );
+      }
+
       await this.docker(["volume", "create", vol], env);
 
       // Seed config.yaml + skills into the volume WITHOUT booting a gateway.
@@ -56,19 +105,36 @@ export class HermesCliRunner implements AgentRunner {
       const sessions = taskSpec.sessions?.length
         ? taskSpec.sessions
         : [{ role: "eval" as const, prompt: primaryPrompt(taskSpec) }];
+      let lastDiag = "";
       for (const session of sessions) {
-        await this.runChat(vol, session.prompt, configSpec, taskSpec, env);
+        const { diagTail } = await this.runChat(
+          vol, session.prompt, configSpec, taskSpec, env, keyEnv,
+        );
+        if (diagTail) lastDiag = diagTail;
       }
 
       const parsed = await this.inspect(vol, env);
       if (!parsed.sessionId) {
         throw new Error("hermes wrote no session to state.db (see worker logs)");
       }
+      const finalAnswer = parsed.finalAnswer ?? "";
+      const usage = mapUsage(parsed.tokens, configSpec.model);
+      // Zero tokens means no model call actually happened — a provider refusal
+      // (quota/credits/auth). Hermes still writes a session and a canned "request
+      // not processed" answer, so answer text alone isn't enough; the token
+      // count is. Surface what the provider said and FAIL the trial — never
+      // silently switch provider (we hold one variable constant).
+      if (usage.inputTokens === 0 && usage.outputTokens === 0) {
+        throw new Error(
+          `provider "${configSpec.provider}" made no model call (0 tokens) — ` +
+            `refusal/quota/credits: ${lastDiag || "no provider message captured"}`,
+        );
+      }
       return {
         sessionId: parsed.sessionId ?? null,
-        finalAnswer: parsed.finalAnswer ?? "",
+        finalAnswer,
         steps: (parsed.steps ?? []).map(mapStep),
-        usage: mapUsage(parsed.tokens, configSpec.model),
+        usage,
         latencyMs: Date.now() - started,
         error: null,
       };
@@ -98,12 +164,15 @@ export class HermesCliRunner implements AgentRunner {
     cfg: RunInput["configSpec"],
     task: RunInput["taskSpec"],
     env: NodeJS.ProcessEnv,
-  ): Promise<void> {
+    keyEnv: string,
+  ): Promise<{ diagTail: string }> {
     const args = [
       "run", "--rm",
-      "-e", "GEMINI_API_KEY",
+      // Pass the provider's key by name only (value stays out of argv/logs).
+      "-e", keyEnv,
       "-e", "HERMES_UID=10000", "-e", "HERMES_GID=10000",
       "-v", `${vol}:/opt/data`,
+      "-w", WORKDIR,
       IMAGE,
       "chat", "-q", prompt, "--oneshot",
       "--provider", cfg.provider, "-m", cfg.model,
@@ -113,12 +182,18 @@ export class HermesCliRunner implements AgentRunner {
     if (cfg.toolsets.length) args.push("-t", cfg.toolsets.join(","));
     if (cfg.skills.length) args.push("-s", cfg.skills.join(","));
 
-    const { code, stderr } = await this.dockerRun(args, env);
+    const { code, stdout, stderr } = await this.dockerRun(args, env);
+    // Hermes prints provider errors (e.g. "HTTP 402 … credits … exhausted") to
+    // stdout, s6 noise to stderr. Pull the most telling line from both.
+    const lines = `${stdout}\n${stderr}`.split("\n").map((l) => l.trim()).filter(Boolean);
+    const errLine = lines
+      .filter((l) => /\b([45]\d\d|error|exhaust|credit|billing|reject|unauthor|quota|rate limit|not processed)\b/i.test(l))
+      .pop();
+    const diagTail = (errLine ?? lines.at(-1) ?? "").slice(0, 500);
     if (code !== 0) {
-      this.logger.warn(
-        `hermes chat exited ${code} (tolerated; parsing state.db). ${stderr.trim().split("\n").pop() ?? ""}`,
-      );
+      this.logger.warn(`hermes chat exited ${code} (tolerated; parsing state.db). ${diagTail}`);
     }
+    return { diagTail };
   }
 
   /**
@@ -148,6 +223,10 @@ export class HermesCliRunner implements AgentRunner {
         "--entrypoint", "sh", IMAGE,
         "-c",
         "cp /seed/config.yaml /opt/data/config.yaml && " +
+          "mkdir -p /opt/data/work && " +
+          // The chat runs as uid 10000; make the sandbox writable for it so the
+          // terminal tool can create files (its default cwd `/` is read-only).
+          "chown -R 10000:10000 /opt/data/work 2>/dev/null || true; " +
           "if [ -d /skills_src ]; then mkdir -p /opt/data/skills && cp -r /skills_src/* /opt/data/skills/ 2>/dev/null || true; fi",
       ],
       env,

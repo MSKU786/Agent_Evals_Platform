@@ -11,6 +11,7 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:push": "prisma db push --skip-generate",
     "seed": "tsx prisma/seed.ts",
+    "derisk": "tsx scripts/derisk.ts",
     "test": "vitest run"
   },
   "dependencies": {

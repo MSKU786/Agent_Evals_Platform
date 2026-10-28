@@ -13,4 +13,8 @@ Read docs/PLAN.md before any work. It is the source of truth.
 ## Stack
 
 pnpm monorepo · NestJS · Prisma + Postgres · pg-boss · Vue 3 + Vite · TypeScript strict · Jest/Vitest · docker compose
-Model provider: Gemini API (GEMINI_API_KEY in .env)
+Model provider: configurable per AgentConfig — Gemini or OpenRouter. The runner
+selects the key by provider (gemini→GEMINI_API_KEY, openrouter→OPENROUTER_API_KEY).
+Default is OpenRouter for now because the Gemini free-tier quota is exhausted
+under agent load; switching the whole experiment back is a one-line config/env
+change, not a code edit. Keys live in .env (never committed).

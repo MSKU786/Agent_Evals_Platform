@@ -39,12 +39,17 @@ const suite: SuiteSpec = {
   ],
 };
 
+// The real experiment's one variable: model capability (cheap vs strong),
+// same generation so nothing else changes. Via OpenRouter — Gemini's free tier
+// is exhausted under agent load (see docs/LIMITS.md). OpenRouter serves
+// gemini-3.8-flash but no 3.8 lite, so we use the 3.5 flash / flash-lite pair,
+// which holds the generation constant and changes only the tier.
 const configs: Array<{ name: string; spec: AgentConfigSpec }> = [
   {
     name: "flash-lite",
     spec: AgentConfigSpec.parse({
-      model: "gemini-3.8-flash-lite",
-      provider: "gemini",
+      model: "google/gemini-3.5-flash-lite",
+      provider: "openrouter",
       toolsets: [],
       skills: [],
       memoryEnabled: false,
@@ -54,8 +59,8 @@ const configs: Array<{ name: string; spec: AgentConfigSpec }> = [
   {
     name: "flash",
     spec: AgentConfigSpec.parse({
-      model: "gemini-3.8-flash",
-      provider: "gemini",
+      model: "google/gemini-3.5-flash",
+      provider: "openrouter",
       toolsets: [],
       skills: [],
       memoryEnabled: false,
