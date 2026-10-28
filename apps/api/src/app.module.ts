@@ -6,6 +6,7 @@ import { SuitesModule } from "./suites/suites.module";
 import { ConfigsModule } from "./configs/configs.module";
 import { ExperimentsModule } from "./experiments/experiments.module";
 import { TrialsModule } from "./trials/trials.module";
+import { ReportsModule } from "./reports/reports.module";
 
 @Module({
   imports: [
@@ -15,6 +16,7 @@ import { TrialsModule } from "./trials/trials.module";
     ConfigsModule,
     ExperimentsModule,
     TrialsModule,
+    ReportsModule,
   ],
   controllers: [HealthController],
 })

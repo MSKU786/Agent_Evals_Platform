@@ -158,3 +158,81 @@ export const TrialJob = z.object({
 export type TrialJob = z.infer<typeof TrialJob>;
 
 export const TRIAL_QUEUE = "trial" as const;
+
+// ---------------------------------------------------------------------------
+// Grading
+// ---------------------------------------------------------------------------
+
+/** One grader's verdict on one trial. `reason` must explain the verdict. */
+export const GradeOutcome = z.object({
+  graderType: GraderType,
+  score: z.number().min(0).max(1),
+  passed: z.boolean(),
+  weight: z.number().positive().default(1),
+  reason: z.string().min(1),
+  evidence: z.record(z.unknown()).nullable().default(null),
+});
+export type GradeOutcome = z.infer<typeof GradeOutcome>;
+
+/** The combined grade for a trial: weighted mean of its graders. */
+export interface TrialGrade {
+  score: number; // 0..1, weighted mean
+  passed: boolean; // score >= task passThreshold (default: all graders passed)
+  graders: GradeOutcome[];
+}
+
+// ---------------------------------------------------------------------------
+// Comparison report (derived on read — never stored as truth)
+// ---------------------------------------------------------------------------
+
+export type Verdict = "better" | "worse" | "no-difference" | "insufficient-data";
+
+export interface Interval {
+  lo: number;
+  hi: number;
+}
+
+export interface ConfigSummary {
+  configId: string;
+  name: string;
+  /** mean task-level pass rate (0..1) and its bootstrap CI */
+  passRate: number;
+  passRateCI: Interval;
+  meanCostUsd: number;
+  meanLatencyMs: number;
+}
+
+export interface TaskBreakdown {
+  taskId: string;
+  slug: string;
+  /** per-config mean score (0..1), keyed by configId */
+  byConfig: Record<string, number>;
+  /** baseline→candidate difference in score (candidate − baseline) */
+  diff: number;
+  /** flaky in either arm: 0 < pass fraction < 1 across reps */
+  flaky: boolean;
+}
+
+export interface ComparisonArm {
+  configId: string;
+  name: string;
+  /** mean paired difference d̄ vs baseline, in score points (candidate − baseline) */
+  effect: number;
+  effectCI: Interval;
+  pValue: number;
+  /** Holm-adjusted p-value when more than one candidate is compared */
+  pValueAdjusted: number;
+  verdict: Verdict;
+}
+
+export interface ComparisonReport {
+  experimentId: string;
+  baselineConfigId: string;
+  tasks: number;
+  repeats: number;
+  configs: ConfigSummary[];
+  comparisons: ComparisonArm[]; // each non-baseline config vs baseline
+  perTask: TaskBreakdown[];
+  bootstrapResamples: number;
+  seed: number;
+}

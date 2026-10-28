@@ -7,6 +7,7 @@ import {
 import { PrismaService } from "../prisma/prisma.service";
 import { AGENT_RUNNER, type AgentRunner } from "../runner/agent-runner";
 import { renderHermesConfig } from "../runner/render-config";
+import { GradingService } from "../grading/grading.service";
 
 /**
  * Runs one trial job end to end: load the task + config, run the agent through
@@ -20,6 +21,7 @@ export class TrialExecutor {
   constructor(
     private readonly prisma: PrismaService,
     @Inject(AGENT_RUNNER) private readonly runner: AgentRunner,
+    private readonly grading: GradingService,
   ) {}
 
   async execute(job: TrialJob): Promise<void> {
@@ -40,7 +42,7 @@ export class TrialExecutor {
     const configSpec = AgentConfigSpec.parse(config.spec);
 
     // Create (or re-open) the trial row as running. Idempotent on retry.
-    await this.prisma.trial.upsert({
+    const trial = await this.prisma.trial.upsert({
       where,
       create: {
         experimentId: job.experimentId,
@@ -79,6 +81,18 @@ export class TrialExecutor {
         `trial done: task=${task.slug} config=${config.name} rep=${job.repIndex} ` +
           `(${result.steps.length} steps, ${result.usage.inputTokens}+${result.usage.outputTokens} tok)`,
       );
+
+      // Grade immediately from the stored trajectory. A grading failure must
+      // not fail the trial (the agent run succeeded) — regrade can fix it.
+      if (!result.error) {
+        try {
+          await this.grading.gradeTrial(trial.id);
+        } catch (gradeErr) {
+          this.logger.warn(
+            `grading failed for trial ${trial.id}: ${gradeErr instanceof Error ? gradeErr.message : gradeErr}`,
+          );
+        }
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       await this.prisma.trial.update({

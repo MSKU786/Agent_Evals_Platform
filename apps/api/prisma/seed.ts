@@ -16,9 +16,23 @@ const suite: SuiteSpec = {
       slug: "reasoning-mult",
       prompt: "What is 7 times 6? Reply with only the number.",
       fixtures: {},
-      graders: [
-        { type: "regex", weight: 1, passThreshold: 1, config: { pattern: "\\b42\\b" } },
-      ],
+      graders: [{ type: "regex", weight: 1, passThreshold: 1, config: { pattern: "\\b42\\b" } }],
+      timeoutSec: 120,
+      tags: ["reasoning"],
+    },
+    {
+      slug: "reasoning-add",
+      prompt: "What is 19 plus 23? Reply with only the number.",
+      fixtures: {},
+      graders: [{ type: "regex", weight: 1, passThreshold: 1, config: { pattern: "\\b42\\b" } }],
+      timeoutSec: 120,
+      tags: ["reasoning"],
+    },
+    {
+      slug: "reasoning-half",
+      prompt: "What is half of 84? Reply with only the number.",
+      fixtures: {},
+      graders: [{ type: "regex", weight: 1, passThreshold: 1, config: { pattern: "\\b42\\b" } }],
       timeoutSec: 120,
       tags: ["reasoning"],
     },
@@ -51,25 +65,19 @@ const configs: Array<{ name: string; spec: AgentConfigSpec }> = [
 ];
 
 async function main(): Promise<void> {
-  const existing = await prisma.taskSuite.findUnique({
+  const suiteRow = await prisma.taskSuite.upsert({
     where: { name_version: { name: suite.name, version: suite.version } },
+    create: { name: suite.name, version: suite.version },
+    update: {},
   });
-  if (existing) {
-    await prisma.task.deleteMany({ where: { suiteId: existing.id } });
+  // Upsert tasks (non-destructive: existing trials keep their FK).
+  for (const t of suite.tasks) {
+    await prisma.task.upsert({
+      where: { suiteId_slug: { suiteId: suiteRow.id, slug: t.slug } },
+      create: { suiteId: suiteRow.id, slug: t.slug, spec: t as object, tags: t.tags ?? [] },
+      update: { spec: t as object, tags: t.tags ?? [] },
+    });
   }
-  const suiteRow =
-    existing ??
-    (await prisma.taskSuite.create({
-      data: { name: suite.name, version: suite.version },
-    }));
-  await prisma.task.createMany({
-    data: suite.tasks.map((t) => ({
-      suiteId: suiteRow.id,
-      slug: t.slug,
-      spec: t as object,
-      tags: t.tags ?? [],
-    })),
-  });
 
   for (const c of configs) {
     const hash = configHash(c.spec);

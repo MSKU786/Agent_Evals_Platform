@@ -1,9 +1,19 @@
-import { Controller, Get, Param, Query } from "@nestjs/common";
+import { Controller, Get, Param, Post, Query } from "@nestjs/common";
 import { TrialsService } from "./trials.service";
+import { GradingService } from "../grading/grading.service";
 
 @Controller("trials")
 export class TrialsController {
-  constructor(private readonly trials: TrialsService) {}
+  constructor(
+    private readonly trials: TrialsService,
+    private readonly grading: GradingService,
+  ) {}
+
+  /** Re-run graders on the stored trajectory — no agent re-run. */
+  @Post(":id/regrade")
+  regrade(@Param("id") id: string) {
+    return this.grading.gradeTrial(id);
+  }
 
   @Get()
   list(
