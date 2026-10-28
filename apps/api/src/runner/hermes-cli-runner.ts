@@ -1,5 +1,6 @@
 import { execFile, spawn } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { Injectable, Logger } from "@nestjs/common";
@@ -13,6 +14,7 @@ import {
   primaryPrompt,
   type RunInput,
 } from "./agent-runner";
+import { renderHermesConfig } from "./render-config";
 
 const exec = promisify(execFile);
 
@@ -43,15 +45,11 @@ export class HermesCliRunner implements AgentRunner {
     try {
       await this.docker(["volume", "create", vol], env);
 
-      // Seed memory (config-only knob); /init writes config.yaml first.
-      await this.docker(
-        [
-          "run", "--rm", "-e", "HERMES_UID=10000", "-e", "HERMES_GID=10000",
-          "-v", `${vol}:/opt/data`, IMAGE,
-          "config", "set", "memory.memory_enabled", String(configSpec.memoryEnabled),
-        ],
-        env,
-      );
+      // Seed config.yaml + skills into the volume WITHOUT booting a gateway.
+      // Booting once to `config set` leaves stale gateway/lease state that makes
+      // the next run's turn get rejected ("request not processed"), so the chat
+      // below is the single gateway lifecycle on this volume.
+      await this.seedVolume(vol, configSpec, env);
 
       // A task is one prompt, or an ordered setup→eval session list (memory
       // tasks). All sessions share the volume so memory carries across them.
@@ -63,6 +61,9 @@ export class HermesCliRunner implements AgentRunner {
       }
 
       const parsed = await this.inspect(vol, env);
+      if (!parsed.sessionId) {
+        throw new Error("hermes wrote no session to state.db (see worker logs)");
+      }
       return {
         sessionId: parsed.sessionId ?? null,
         finalAnswer: parsed.finalAnswer ?? "",
@@ -85,6 +86,12 @@ export class HermesCliRunner implements AgentRunner {
     }
   }
 
+  /**
+   * One `hermes chat` session via `docker run --rm` (the pattern the Phase-0
+   * spike proved reliable). A non-zero exit is TOLERATED: hermes can exit
+   * non-zero (e.g. turn-lost = 3) while still writing a usable state.db, so we
+   * judge success by what inspect() reads back, not the exit code.
+   */
   private async runChat(
     vol: string,
     prompt: string,
@@ -93,7 +100,7 @@ export class HermesCliRunner implements AgentRunner {
     env: NodeJS.ProcessEnv,
   ): Promise<void> {
     const args = [
-      "create",
+      "run", "--rm",
       "-e", "GEMINI_API_KEY",
       "-e", "HERMES_UID=10000", "-e", "HERMES_GID=10000",
       "-v", `${vol}:/opt/data`,
@@ -106,21 +113,64 @@ export class HermesCliRunner implements AgentRunner {
     if (cfg.toolsets.length) args.push("-t", cfg.toolsets.join(","));
     if (cfg.skills.length) args.push("-s", cfg.skills.join(","));
 
-    const { stdout } = await this.docker(args, env);
-    const cid = stdout.trim().split("\n").pop()!.trim();
-    try {
-      for (const skill of cfg.skills) {
-        const src = SKILL_DIRS.map((d) => join(d, skill)).find(existsSync);
-        if (src) {
-          await this.docker(["cp", src, `${cid}:/opt/data/skills/`], env).catch(
-            () => undefined,
-          );
-        }
-      }
-      await this.docker(["start", "-a", cid], env);
-    } finally {
-      await this.docker(["rm", "-f", cid], env).catch(() => undefined);
+    const { code, stderr } = await this.dockerRun(args, env);
+    if (code !== 0) {
+      this.logger.warn(
+        `hermes chat exited ${code} (tolerated; parsing state.db). ${stderr.trim().split("\n").pop() ?? ""}`,
+      );
     }
+  }
+
+  /**
+   * Seed the volume with config.yaml (carrying the memory setting) and any
+   * preloaded skills, via a plain file copy that does NOT boot /init or the
+   * gateway. This keeps the subsequent chat as the single gateway lifecycle.
+   */
+  private async seedVolume(
+    vol: string,
+    cfg: RunInput["configSpec"],
+    env: NodeJS.ProcessEnv,
+  ): Promise<void> {
+    const seedDir = mkdtempSync(join(tmpdir(), "hermes-seed-"));
+    writeFileSync(join(seedDir, "config.yaml"), renderHermesConfig(cfg));
+
+    // Docker Desktop wants forward-slash host paths (C:/foo), not backslashes.
+    const toMount = (p: string) => p.replace(/\\/g, "/");
+    const mounts = ["-v", `${toMount(seedDir)}:/seed:ro`];
+    for (const skill of cfg.skills) {
+      const src = SKILL_DIRS.map((d) => join(d, skill)).find(existsSync);
+      if (src) mounts.push("-v", `${toMount(src)}:/skills_src/${skill}:ro`);
+    }
+
+    const { code, stderr } = await this.dockerRun(
+      [
+        "run", "--rm", "-v", `${vol}:/opt/data`, ...mounts,
+        "--entrypoint", "sh", IMAGE,
+        "-c",
+        "cp /seed/config.yaml /opt/data/config.yaml && " +
+          "if [ -d /skills_src ]; then mkdir -p /opt/data/skills && cp -r /skills_src/* /opt/data/skills/ 2>/dev/null || true; fi",
+      ],
+      env,
+    );
+    if (code !== 0) {
+      this.logger.warn(`volume seed exited ${code}: ${stderr.trim().split("\n").pop() ?? ""}`);
+    }
+  }
+
+  /** Run docker, resolving with the exit code instead of throwing on non-zero. */
+  private dockerRun(
+    args: string[],
+    env: NodeJS.ProcessEnv,
+  ): Promise<{ code: number; stdout: string; stderr: string }> {
+    return new Promise((resolve) => {
+      const child = spawn("docker", args, { env });
+      let stdout = "";
+      let stderr = "";
+      child.stdout.on("data", (d) => (stdout += d));
+      child.stderr.on("data", (d) => (stderr += d));
+      child.on("error", (e) => resolve({ code: -1, stdout, stderr: stderr + String(e) }));
+      child.on("close", (code) => resolve({ code: code ?? -1, stdout, stderr }));
+    });
   }
 
   private async inspect(
