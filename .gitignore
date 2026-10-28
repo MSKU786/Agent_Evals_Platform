@@ -1,1 +1,16 @@
+# secrets
 *.env
+.env
+!.env.example
+
+# node / builds
+node_modules/
+dist/
+*.tsbuildinfo
+
+# prisma generated client is regenerated from schema
+# (kept out; run `pnpm prisma:generate`)
+
+# logs / os
+*.log
+.DS_Store

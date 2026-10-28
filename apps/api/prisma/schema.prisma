@@ -1,0 +1,127 @@
+// Prisma schema — the DB models from docs/Plan.md §4.
+// Task specs, graders and trajectories live in JSONB (nothing queries inside
+// them); reports are computed on read, never stored.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model TaskSuite {
+  id         String   @id @default(cuid())
+  name       String
+  version    String
+  sourceYaml String?  @map("source_yaml")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  tasks       Task[]
+  experiments Experiment[]
+
+  @@unique([name, version])
+  @@map("task_suites")
+}
+
+model Task {
+  id      String   @id @default(cuid())
+  suiteId String   @map("suite_id")
+  slug    String
+  spec    Json // prompt/sessions, fixtures and graders
+  tags    String[] @default([])
+
+  suite  TaskSuite @relation(fields: [suiteId], references: [id], onDelete: Cascade)
+  trials Trial[]
+
+  @@unique([suiteId, slug])
+  @@map("tasks")
+}
+
+model AgentConfig {
+  id         String   @id @default(cuid())
+  name       String
+  spec       Json // AgentConfigSpec
+  configHash String   @unique @map("config_hash")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  trials            Trial[]
+  experimentConfigs ExperimentConfig[]
+  baselineOf        Experiment[]       @relation("baseline")
+
+  @@map("agent_configs")
+}
+
+model Experiment {
+  id               String    @id @default(cuid())
+  suiteId          String    @map("suite_id")
+  baselineConfigId String    @map("baseline_config_id")
+  repeats          Int
+  seed             Int       @default(1)
+  status           String    @default("pending")
+  hermesVersion    String?   @map("hermes_version")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  finishedAt       DateTime? @map("finished_at")
+
+  suite          TaskSuite          @relation(fields: [suiteId], references: [id])
+  baselineConfig AgentConfig        @relation("baseline", fields: [baselineConfigId], references: [id])
+  configs        ExperimentConfig[]
+  trials         Trial[]
+
+  @@map("experiments")
+}
+
+model ExperimentConfig {
+  experimentId String @map("experiment_id")
+  configId     String @map("config_id")
+
+  experiment Experiment  @relation(fields: [experimentId], references: [id], onDelete: Cascade)
+  config     AgentConfig @relation(fields: [configId], references: [id])
+
+  @@id([experimentId, configId])
+  @@map("experiment_configs")
+}
+
+model Trial {
+  id             String    @id @default(cuid())
+  experimentId   String    @map("experiment_id")
+  taskId         String    @map("task_id")
+  configId       String    @map("config_id")
+  repIndex       Int       @map("rep_index")
+  status         String    @default("queued")
+  finalAnswer    String?   @map("final_answer")
+  score          Float?
+  passed         Boolean?
+  inputTokens    Int       @default(0) @map("input_tokens")
+  outputTokens   Int       @default(0) @map("output_tokens")
+  costUsd        Float?    @map("cost_usd")
+  latencyMs      Int?      @map("latency_ms")
+  error          String?
+  trajectory     Json? // { steps: [...], usage: {...} }
+  renderedConfig String?   @map("rendered_config")
+  startedAt      DateTime? @map("started_at")
+  finishedAt     DateTime? @map("finished_at")
+
+  experiment   Experiment    @relation(fields: [experimentId], references: [id], onDelete: Cascade)
+  task         Task          @relation(fields: [taskId], references: [id])
+  config       AgentConfig   @relation(fields: [configId], references: [id])
+  gradeResults GradeResult[]
+
+  @@unique([experimentId, taskId, configId, repIndex])
+  @@map("trials")
+}
+
+model GradeResult {
+  id         String  @id @default(cuid())
+  trialId    String  @map("trial_id")
+  graderType String  @map("grader_type")
+  score      Float
+  passed     Boolean
+  reason     String
+  evidence   Json?
+
+  trial Trial @relation(fields: [trialId], references: [id], onDelete: Cascade)
+
+  @@map("grade_results")
+}

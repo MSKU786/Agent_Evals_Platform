@@ -1,0 +1,56 @@
+# One command to bring up the stack: `docker compose up`.
+# Postgres + API + worker. The API service pushes the schema and seeds the
+# sample suite + two configs on start, so a clean checkout is immediately usable.
+# (The Vue web app is a Phase-1 follow-up and not yet included.)
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: agent_evals
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/agent_evals
+      RUNNER: ${RUNNER:-fake}
+      PORT: "3000"
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: >
+      sh -c "pnpm --filter @agent-evals/api prisma:push &&
+             pnpm --filter @agent-evals/api seed &&
+             pnpm --filter @agent-evals/api start:api"
+
+  worker:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/agent_evals
+      RUNNER: ${RUNNER:-fake}
+      WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-2}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: ["pnpm", "--filter", "@agent-evals/api", "start:worker"]
+
+volumes:
+  pgdata:

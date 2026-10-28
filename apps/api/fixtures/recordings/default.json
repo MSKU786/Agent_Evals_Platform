@@ -1,0 +1,15 @@
+{
+  "finalAnswer": "42",
+  "steps": [
+    { "role": "assistant", "content": "42", "finishReason": "stop" }
+  ],
+  "usage": {
+    "inputTokens": 13151,
+    "outputTokens": 55,
+    "reasoningTokens": 53,
+    "cacheReadTokens": 0,
+    "cacheWriteTokens": 0,
+    "toolCallCount": 0,
+    "costUsd": 0.0100695
+  }
+}

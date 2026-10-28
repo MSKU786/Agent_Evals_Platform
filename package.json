@@ -1,0 +1,19 @@
+{
+  "name": "agent-evals",
+  "version": "0.0.0",
+  "private": true,
+  "packageManager": "pnpm@9.15.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "pnpm -r --filter ./packages/shared build",
+    "dev:api": "pnpm --filter @agent-evals/api dev:api",
+    "dev:worker": "pnpm --filter @agent-evals/api dev:worker",
+    "prisma:generate": "pnpm --filter @agent-evals/api prisma:generate",
+    "prisma:migrate": "pnpm --filter @agent-evals/api prisma:migrate",
+    "prisma:push": "pnpm --filter @agent-evals/api prisma:push",
+    "seed": "pnpm --filter @agent-evals/api seed",
+    "test": "pnpm -r test"
+  }
+}
