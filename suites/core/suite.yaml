@@ -1,0 +1,290 @@
+# Core evaluation suite — 10 tasks in five groups.
+#
+# IMPORTANT (see docs/LIMITS.md): every task is **answer-checkable**. The grader
+# only ever sees the trial's final reply text, never files on disk. The current
+# platform does not inject task fixtures into the agent sandbox nor recover the
+# agent's output files for grading (the Hermes run happens in a throwaway Docker
+# volume). So any input the agent needs is embedded inline in the prompt, and the
+# graded result is always text in the reply. True file-producing tasks
+# (fixtures-in / work-dir-out / sandboxDir threaded through / pytest in the grader
+# env) are scoped but deferred — a known limit, not a bug.
+#
+# Each group is chosen so a specific config knob should move the score:
+#   reasoning  -> model          file-tools -> model + terminal toolset
+#   code-fix   -> model          skill      -> skills on/off
+#   memory     -> memory on/off
+#
+# Script graders run on the host via `sh -c` in a temp dir; the final answer is in
+# ./agent_answer.txt and $FINAL_ANSWER. They use `node -e` (always present) so no
+# host python is required. Regex graders match the whitespace-collapsed, lower-cased
+# answer, so patterns anchor on an explicit "ANSWER: <x>" line the prompt demands.
+
+name: core
+version: "1"
+
+tasks:
+  # ---------------------------------------------------------------------------
+  # Reasoning (3) — multi-step word problems, numeric answer. Knob: model.
+  # ---------------------------------------------------------------------------
+  - slug: reason-ages
+    prompt: |
+      Solve this step by step, then give the final number.
+
+      Maria is 3 times as old as her son. In 12 years, she will be twice as old
+      as her son will be then. How old is Maria now, in years?
+
+      Show your reasoning, then end your reply with a single final line in
+      exactly this form and nothing after it:
+      ANSWER: <number>
+    graders:
+      - type: regex
+        config: { pattern: 'answer:\s*36\b' }
+    timeoutSec: 240
+    tags: [reasoning, model]
+
+  - slug: reason-sequence
+    prompt: |
+      Solve this step by step, then give the final number.
+
+      A sequence starts at 5. Each following term equals the previous term times
+      2, minus 3. (So the 2nd term is 2*5 - 3 = 7.) What is the 5th term?
+
+      Show your reasoning, then end your reply with a single final line in
+      exactly this form and nothing after it:
+      ANSWER: <number>
+    graders:
+      - type: regex
+        config: { pattern: 'answer:\s*35\b' }
+    timeoutSec: 240
+    tags: [reasoning, model]
+
+  - slug: reason-farm
+    prompt: |
+      Solve this step by step, then give the final number.
+
+      A farmer keeps only chickens and cows. Altogether the animals have 30 heads
+      and 74 legs. (A chicken has 2 legs; a cow has 4.) How many cows are there?
+
+      Show your reasoning, then end your reply with a single final line in
+      exactly this form and nothing after it:
+      ANSWER: <number>
+    graders:
+      - type: regex
+        config: { pattern: 'answer:\s*7\b' }
+    timeoutSec: 240
+    tags: [reasoning, model]
+
+  # ---------------------------------------------------------------------------
+  # File-tools (3) — read inline data, process it (terminal tool helps), output
+  # the result as text in the reply. Knob: model + terminal toolset.
+  # ---------------------------------------------------------------------------
+  - slug: file-csv-totals
+    prompt: |
+      Below is the content of a CSV file (header + rows). Compute the total
+      `amount` per `region`. You may use the terminal tool to help.
+
+      sales.csv:
+      region,amount
+      north,100
+      south,50
+      north,25
+      west,80
+      south,70
+      west,20
+      north,15
+      south,10
+
+      End your reply with a single final line that is ONLY a JSON object mapping
+      each region (lower-case) to its integer total, for example:
+      {"north": 1, "south": 2, "west": 3}
+    graders:
+      - type: script
+        config:
+          command: |-
+            node -e '
+            const fs=require("fs");
+            const t=fs.readFileSync("agent_answer.txt","utf8");
+            const m=t.match(/\{[\s\S]*\}/);
+            if(!m){console.log("no JSON object in reply");process.exit(1);}
+            let o; try{o=JSON.parse(m[0]);}catch(e){console.log("unparseable JSON: "+e.message);process.exit(1);}
+            const norm={}; for(const k in o){norm[k.toLowerCase().trim()]=Number(o[k]);}
+            const exp={north:140,south:130,west:100};
+            for(const k in exp){ if(norm[k]!==exp[k]){console.log("wrong "+k+": got "+norm[k]+" want "+exp[k]);process.exit(1);} }
+            console.log("per-region totals correct: "+JSON.stringify(exp));
+            process.exit(0);
+            '
+    timeoutSec: 420
+    tags: [file-tools, model, toolsets]
+
+  - slug: file-count-errors
+    prompt: |
+      Below is the content of a log file. Count how many lines contain the
+      upper-case word ERROR. You may use the terminal tool to help.
+
+      app.log:
+      2026-01-01 INFO start
+      2026-01-01 ERROR disk full
+      2026-01-01 WARN retrying
+      2026-01-01 INFO ok
+      2026-01-01 ERROR timeout
+      2026-01-01 DEBUG trace
+      2026-01-01 ERROR connection refused
+      2026-01-01 INFO done
+      2026-01-01 WARN slow
+      2026-01-01 ERROR out of memory
+      2026-01-01 INFO shutdown
+
+      End your reply with a single final line in exactly this form and nothing
+      after it:
+      ANSWER: <count>
+    graders:
+      - type: script
+        config:
+          command: |-
+            node -e '
+            const t=require("fs").readFileSync("agent_answer.txt","utf8").toLowerCase();
+            const ok=/answer:\s*4\b/.test(t);
+            console.log(ok?"count is 4 (correct)":"expected ANSWER: 4");
+            process.exit(ok?0:1);
+            '
+    timeoutSec: 420
+    tags: [file-tools, model, toolsets]
+
+  - slug: file-top-scores
+    prompt: |
+      Below are player scores, one per line as `name,score`. Find the three
+      players with the highest scores, highest first. You may use the terminal
+      tool to help.
+
+      scores.csv:
+      alice,42
+      bob,17
+      charlie,88
+      dave,55
+      erin,33
+      frank,71
+
+      End your reply with a single final line in exactly this form (names only,
+      lower-case, comma-separated, highest first) and nothing after it:
+      TOP: name1, name2, name3
+    graders:
+      - type: script
+        config:
+          command: |-
+            node -e '
+            const t=require("fs").readFileSync("agent_answer.txt","utf8").toLowerCase();
+            const m=t.match(/top:\s*([^\n]+)/);
+            if(!m){console.log("no TOP: line in reply");process.exit(1);}
+            const got=m[1].split(",").map(s=>s.trim().replace(/[^a-z]/g,"")).filter(Boolean).slice(0,3);
+            const want=["charlie","frank","dave"];
+            const ok=got.length===3 && want.every((w,i)=>got[i]===w);
+            console.log(ok?("order correct: "+got.join(", ")):("got ["+got.join(", ")+"] want ["+want.join(", ")+"]"));
+            process.exit(ok?0:1);
+            '
+    timeoutSec: 420
+    tags: [file-tools, model, toolsets]
+
+  # ---------------------------------------------------------------------------
+  # Code-fix (2) — buggy code is in the prompt; agent reasons about the fix and
+  # reports the fixed behaviour. Knob: model. (terminal available to test.)
+  # ---------------------------------------------------------------------------
+  - slug: codefix-average
+    prompt: |
+      The Python function below is supposed to return the arithmetic mean of a
+      list of numbers, but it has a bug:
+
+      ```python
+      def average(nums):
+          total = 0
+          for n in nums:
+              total += n
+          return total / len(nums) + 1
+      ```
+
+      Identify and fix the bug. You may use the terminal tool to test. Then
+      report the value the CORRECTED function returns for average([2, 4, 6]).
+
+      End your reply with a single final line in exactly this form and nothing
+      after it:
+      ANSWER: <number>
+    graders:
+      - type: regex
+        config: { pattern: 'answer:\s*4(\.0+)?\b' }
+    timeoutSec: 420
+    tags: [code-fix, model]
+
+  - slug: codefix-factorial
+    prompt: |
+      The Python function below is supposed to return n! (n factorial), but it
+      has a bug:
+
+      ```python
+      def factorial(n):
+          result = 1
+          for i in range(1, n):
+              result *= i
+          return result
+      ```
+
+      Identify and fix the bug. You may use the terminal tool to test. Then
+      report the value the CORRECTED function returns for factorial(5).
+
+      End your reply with a single final line in exactly this form and nothing
+      after it:
+      ANSWER: <number>
+    graders:
+      - type: regex
+        config: { pattern: 'answer:\s*120\b' }
+    timeoutSec: 420
+    tags: [code-fix, model]
+
+  # ---------------------------------------------------------------------------
+  # Skill (1) — house changelog format defined by the `changelog-style` skill.
+  # The prompt deliberately does NOT describe the format; only the skill knows
+  # it. Knob: skills on/off.
+  # ---------------------------------------------------------------------------
+  - slug: skill-changelog
+    prompt: |
+      Write a changelog for the following commits. Output only the changelog.
+
+      Commits:
+      - implement CSV export for the reports page
+      - fix a timezone bug in the scheduler
+      - update the README install steps
+      - add pagination to the trials list
+    graders:
+      - type: script
+        config:
+          command: |-
+            node -e '
+            const t=require("fs").readFileSync("agent_answer.txt","utf8").toLowerCase();
+            const hasHeader=t.includes("## changelog");
+            const hasFooter=t.includes("_generated in house format._");
+            const hasSection=/###\s+(added|fixed|changed)/.test(t);
+            const ok=hasHeader&&hasFooter&&hasSection;
+            console.log("header="+hasHeader+" footer="+hasFooter+" section="+hasSection);
+            process.exit(ok?0:1);
+            '
+    timeoutSec: 300
+    tags: [skill, skills]
+
+  # ---------------------------------------------------------------------------
+  # Memory (1) — a fact stated in a setup session must be recalled in a fresh
+  # eval session (same HERMES_HOME). Knob: memory on/off.
+  # ---------------------------------------------------------------------------
+  - slug: memory-region
+    sessions:
+      - role: setup
+        prompt: |
+          Please remember these facts about my setup for later: my production
+          database runs in the region "ap-south-1", and my main service is named
+          "orders-api". Just acknowledge briefly that you've noted them.
+      - role: eval
+        prompt: |
+          Which region does my production database run in? Reply with only the
+          region code, nothing else.
+    graders:
+      - type: regex
+        config: { pattern: 'ap-south-1' }
+    timeoutSec: 420
+    tags: [memory, memory-knob]

@@ -1,14 +1,24 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { load } from "js-yaml";
 import { PrismaClient } from "@prisma/client";
-import {
-  AgentConfigSpec,
-  configHash,
-  type SuiteSpec,
-} from "@agent-evals/shared";
+import { AgentConfigSpec, configHash, SuiteSpec } from "@agent-evals/shared";
 
 const prisma = new PrismaClient();
 
-/** A tiny suite + two configs that differ in one variable (model). */
-const suite: SuiteSpec = {
+// The real sample suite the plan describes: 10 tasks in five groups, loaded
+// from the repo's YAML so a fresh `docker compose up` presents exactly what a
+// reviewer should see. seed.ts lives at apps/api/prisma/, so the repo root is
+// three levels up.
+const repoRoot = resolve(__dirname, "..", "..", "..");
+const coreYamlPath = resolve(repoRoot, "suites", "core", "suite.yaml");
+
+/**
+ * A tiny 3-task suite kept around for quick smoke checks. It is NOT seeded by
+ * default — set SEED_SMOKE=1 to also seed it — so the core suite is what a
+ * fresh checkout surfaces.
+ */
+const smokeSuite: SuiteSpec = {
   name: "smoke",
   version: "1",
   tasks: [
@@ -69,19 +79,38 @@ const configs: Array<{ name: string; spec: AgentConfigSpec }> = [
   },
 ];
 
-async function main(): Promise<void> {
+const truthy = (v: string | undefined): boolean =>
+  v === "1" || v?.toLowerCase() === "true";
+
+/**
+ * Upsert a suite and its tasks by (suite, slug) — never destructive, so
+ * re-seeding preserves existing task rows (and any trials pointing at them).
+ */
+async function seedSuite(spec: SuiteSpec, sourceYaml: string | null): Promise<string> {
   const suiteRow = await prisma.taskSuite.upsert({
-    where: { name_version: { name: suite.name, version: suite.version } },
-    create: { name: suite.name, version: suite.version },
-    update: {},
+    where: { name_version: { name: spec.name, version: spec.version } },
+    create: { name: spec.name, version: spec.version, sourceYaml },
+    update: sourceYaml ? { sourceYaml } : {},
   });
-  // Upsert tasks (non-destructive: existing trials keep their FK).
-  for (const t of suite.tasks) {
+  for (const t of spec.tasks) {
     await prisma.task.upsert({
       where: { suiteId_slug: { suiteId: suiteRow.id, slug: t.slug } },
       create: { suiteId: suiteRow.id, slug: t.slug, spec: t as object, tags: t.tags ?? [] },
       update: { spec: t as object, tags: t.tags ?? [] },
     });
+  }
+  return suiteRow.id;
+}
+
+async function main(): Promise<void> {
+  // Primary: the real 10-task core suite from suites/core/suite.yaml.
+  const coreYaml = readFileSync(coreYamlPath, "utf8");
+  const coreSuite = SuiteSpec.parse(load(coreYaml));
+  const suiteId = await seedSuite(coreSuite, coreYaml);
+
+  // Optional smoke suite for quick checks (SEED_SMOKE=1).
+  if (truthy(process.env.SEED_SMOKE)) {
+    await seedSuite(smokeSuite, null);
   }
 
   for (const c of configs) {
@@ -93,9 +122,14 @@ async function main(): Promise<void> {
     });
   }
 
-  const suiteId = suiteRow.id;
   const configIds = await prisma.agentConfig.findMany({ select: { id: true, name: true } });
-  console.log(JSON.stringify({ suiteId, configs: configIds }, null, 2));
+  console.log(
+    JSON.stringify(
+      { suiteId, suite: coreSuite.name, tasks: coreSuite.tasks.length, configs: configIds },
+      null,
+      2,
+    ),
+  );
 }
 
 main()

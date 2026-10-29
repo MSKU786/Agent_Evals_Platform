@@ -17,6 +17,8 @@ RUN pnpm install
 # Source, then build shared + generate the Prisma client.
 COPY packages/shared packages/shared
 COPY apps/api apps/api
+# The sample suite YAML the seed loads at startup.
+COPY suites suites
 RUN pnpm --filter @agent-evals/shared build \
     && pnpm --filter @agent-evals/api prisma:generate
 
