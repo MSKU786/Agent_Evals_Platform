@@ -72,6 +72,19 @@ export class ExperimentsService {
     return { id: experiment.id, status: experiment.status, plannedTrials: enqueued };
   }
 
+  /** List experiments, newest first, with suite name and config count for the
+   * experiments table. Verdict is computed on read by the report endpoint, so
+   * it is not included here. */
+  async list() {
+    return this.prisma.experiment.findMany({
+      orderBy: { createdAt: "desc" },
+      include: {
+        suite: { select: { name: true, version: true } },
+        _count: { select: { configs: true } },
+      },
+    });
+  }
+
   async get(id: string) {
     const experiment = await this.prisma.experiment.findUnique({
       where: { id },

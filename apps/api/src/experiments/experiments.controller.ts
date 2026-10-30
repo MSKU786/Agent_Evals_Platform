@@ -10,6 +10,11 @@ export class ExperimentsController {
     return this.experiments.create(body);
   }
 
+  @Get()
+  list() {
+    return this.experiments.list();
+  }
+
   @Get(":id")
   get(@Param("id") id: string) {
     return this.experiments.get(id);

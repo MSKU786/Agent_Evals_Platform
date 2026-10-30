@@ -1,7 +1,7 @@
 # One command to bring up the stack: `docker compose up`.
-# Postgres + API + worker. The API service pushes the schema and seeds the
+# Postgres + API + worker + web. The API service pushes the schema and seeds the
 # sample suite + two configs on start, so a clean checkout is immediately usable.
-# (The Vue web app is a Phase-1 follow-up and not yet included.)
+# The web service serves the Vue UI on http://localhost:5173.
 
 services:
   postgres:
@@ -51,6 +51,18 @@ services:
       postgres:
         condition: service_healthy
     command: ["pnpm", "--filter", "@agent-evals/api", "start:worker"]
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    environment:
+      # Browser-side base URL; the browser reaches the API on the host port.
+      VITE_API_BASE: ${VITE_API_BASE:-http://localhost:3000}
+    ports:
+      - "5173:5173"
+    depends_on:
+      - api
 
 volumes:
   pgdata:
