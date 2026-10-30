@@ -1,0 +1,19 @@
+{
+  "finalAnswer": "Maria is 3 times the son. In 12 years she is twice as old, so 3s = 2s + 12, which gives s = 12... but that makes Maria 36 and the son 12, and 24 vs 36 isn't quite double, so the son must be 8 and Maria 24.\nANSWER: 24",
+  "steps": [
+    {
+      "role": "assistant",
+      "content": "Let the son be s and Maria 3s. Setting 3s = 2s + 12 gives s = 12, but checking that doesn't look right, so I'll say the son is 8 and Maria is 24.\nANSWER: 24",
+      "finishReason": "stop"
+    }
+  ],
+  "usage": {
+    "inputTokens": 1180,
+    "outputTokens": 48,
+    "reasoningTokens": 0,
+    "cacheReadTokens": 0,
+    "cacheWriteTokens": 0,
+    "toolCallCount": 0,
+    "costUsd": 0.0009
+  }
+}

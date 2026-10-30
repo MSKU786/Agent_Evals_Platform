@@ -7,6 +7,10 @@ export interface RunInput {
   trialId: string;
   taskSpec: TaskSpec;
   configSpec: AgentConfigSpec;
+  /** The config's human name (e.g. "flash", "flash-lite"). The FakeRunner uses
+   * it to pick a config-specific recording so a weaker config can model a real
+   * capability gap; the real runner ignores it. */
+  configName?: string;
   /** Host directory to use as the trial sandbox / fixtures source, if any. */
   workdir?: string;
 }

@@ -79,6 +79,7 @@ export class TrialExecutor {
         trialId: `${job.experimentId}_${job.taskId}_${job.configId}_${job.repIndex}`,
         taskSpec,
         configSpec,
+        configName: config.name,
       });
 
       await this.prisma.trial.update({

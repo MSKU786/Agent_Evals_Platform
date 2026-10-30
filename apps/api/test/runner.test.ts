@@ -36,4 +36,34 @@ describe("FakeRunner", () => {
     expect(result.finalAnswer.length).toBeGreaterThan(0);
     expect(result.usage.model).toBe("gemini-3.8-flash");
   });
+
+  // Config-aware lookup: reads from apps/api/fixtures/recordings (vitest cwd).
+  // flash-lite has a config-specific recording for reason-ages (the wrong answer
+  // 24); flash has none, so it falls back to the per-task default (36).
+  const reasonAges = TaskSpec.parse({
+    slug: "reason-ages",
+    prompt: "Maria is 3 times as old as her son… ANSWER: <number>",
+    graders: [{ type: "regex", config: { pattern: "answer:\\s*36\\b" } }],
+  });
+
+  it("uses a config-specific recording when one exists (weak config fails)", async () => {
+    const result = await new FakeRunner().run({
+      trialId: "t2",
+      taskSpec: reasonAges,
+      configSpec,
+      configName: "flash-lite",
+    });
+    expect(result.finalAnswer).toMatch(/answer:\s*24/i);
+    expect(result.finalAnswer).not.toMatch(/answer:\s*36/i);
+  });
+
+  it("falls back to the per-task default when no config recording exists", async () => {
+    const result = await new FakeRunner().run({
+      trialId: "t3",
+      taskSpec: reasonAges,
+      configSpec,
+      configName: "flash", // no flash/ folder → per-task default (36)
+    });
+    expect(result.finalAnswer).toMatch(/answer:\s*36\b/i);
+  });
 });

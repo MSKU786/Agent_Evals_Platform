@@ -1,0 +1,19 @@
+{
+  "finalAnswer": "Heads: c + h = 30. Legs: 4c + 2h = 74. Subtracting twice the heads: 2c = 14, so c = 7 and h = 23. The farmer has 23 of them.\nANSWER: 23",
+  "steps": [
+    {
+      "role": "assistant",
+      "content": "c + h = 30 and 4c + 2h = 74 give 7 cows and 23 chickens; reporting 23.\nANSWER: 23",
+      "finishReason": "stop"
+    }
+  ],
+  "usage": {
+    "inputTokens": 1190,
+    "outputTokens": 46,
+    "reasoningTokens": 0,
+    "cacheReadTokens": 0,
+    "cacheWriteTokens": 0,
+    "toolCallCount": 0,
+    "costUsd": 0.0009
+  }
+}

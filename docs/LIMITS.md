@@ -37,3 +37,18 @@
   limit, not a bug: `TaskSpec.fixtures` and the grader `sandboxDir` hooks already
   exist in the schema, so wiring them is additive and does not change the data
   model.
+- **The shipped experiment uses recorded (synthetic) trajectories, not a live
+  model.** A funded live API key was out of scope, so `docs/EXPERIMENT.md` was
+  produced with `RUNNER=fake`: the FakeRunner replays per-`(config, task)`
+  recordings from `apps/api/fixtures/recordings/`, authored to model a realistic
+  capability gap — the weaker arm (`flash-lite`) gives wrong answers on the
+  multi-step reasoning tasks and the subtler off-by-one code fix, while the
+  stronger arm (`flash`) answers them correctly; both pass the mechanical
+  file/skill/memory tasks. **Nothing about the run is hand-seeded or faked
+  downstream**: the experiment is created through the API, all 100 trials go
+  through the real pg-boss queue → runner → graders, and the verdict/CIs/p-value
+  are computed by the same stats module a live run would use. Swapping to a live
+  model is a one-line change (`RUNNER=hermes` + a provider key, per
+  `docs/PLAN.md`); the platform, graders and statistics are identical. The
+  recorded answers therefore model *agent capability*, not the platform — which
+  is what's being demonstrated.
