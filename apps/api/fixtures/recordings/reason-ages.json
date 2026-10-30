@@ -1,0 +1,19 @@
+{
+  "finalAnswer": "Let son=s, Maria=3s. 3s+12 = 2(s+12) => s=12, Maria=36.\nANSWER: 36",
+  "steps": [
+    {
+      "role": "assistant",
+      "content": "Let son=s, Maria=3s. 3s+12 = 2(s+12) => s=12, Maria=36.\nANSWER: 36",
+      "finishReason": "stop"
+    }
+  ],
+  "usage": {
+    "inputTokens": 1200,
+    "outputTokens": 40,
+    "reasoningTokens": 0,
+    "cacheReadTokens": 0,
+    "cacheWriteTokens": 0,
+    "toolCallCount": 0,
+    "costUsd": 0.0009
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "finalAnswer": "The bug is the stray + 1; remove it. average([2,4,6]) = 12/3 = 4.0.\nANSWER: 4.0",
+  "steps": [
+    {
+      "role": "assistant",
+      "content": "The bug is the stray + 1; remove it. average([2,4,6]) = 12/3 = 4.0.\nANSWER: 4.0",
+      "finishReason": "stop"
+    }
+  ],
+  "usage": {
+    "inputTokens": 1200,
+    "outputTokens": 40,
+    "reasoningTokens": 0,
+    "cacheReadTokens": 0,
+    "cacheWriteTokens": 0,
+    "toolCallCount": 0,
+    "costUsd": 0.0009
+  }
+}

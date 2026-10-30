@@ -32,8 +32,8 @@ const task = TaskSpec.parse({
 });
 
 const config = AgentConfigSpec.parse({
-  model: "google/gemini-3.5-flash", // the strong arm
-  provider: "openrouter",
+  model: "gemini-3.8-flash", // the strong arm
+  provider: "gemini",
   toolsets: ["terminal"],
   skills: [],
   memoryEnabled: false,

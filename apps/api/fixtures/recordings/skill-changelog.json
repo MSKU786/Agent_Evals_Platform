@@ -1,0 +1,19 @@
+{
+  "finalAnswer": "## Changelog\n### Added\n- Add CSV export to the reports page.\n- Add pagination to the trials list.\n### Fixed\n- Fix a timezone bug in the scheduler.\n### Changed\n- Change the README install steps.\n_Generated in house format._",
+  "steps": [
+    {
+      "role": "assistant",
+      "content": "## Changelog\n### Added\n- Add CSV export to the reports page.\n- Add pagination to the trials list.\n### Fixed\n- Fix a timezone bug in the scheduler.\n### Changed\n- Change the README install steps.\n_Generated in house format._",
+      "finishReason": "stop"
+    }
+  ],
+  "usage": {
+    "inputTokens": 1200,
+    "outputTokens": 80,
+    "reasoningTokens": 0,
+    "cacheReadTokens": 0,
+    "cacheWriteTokens": 0,
+    "toolCallCount": 0,
+    "costUsd": 0.0015
+  }
+}

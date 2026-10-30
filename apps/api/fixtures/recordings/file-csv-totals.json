@@ -1,0 +1,19 @@
+{
+  "finalAnswer": "Per-region totals:\n{\"north\": 140, \"south\": 130, \"west\": 100}",
+  "steps": [
+    {
+      "role": "assistant",
+      "content": "Per-region totals:\n{\"north\": 140, \"south\": 130, \"west\": 100}",
+      "finishReason": "stop"
+    }
+  ],
+  "usage": {
+    "inputTokens": 1200,
+    "outputTokens": 40,
+    "reasoningTokens": 0,
+    "cacheReadTokens": 0,
+    "cacheWriteTokens": 0,
+    "toolCallCount": 0,
+    "costUsd": 0.0009
+  }
+}

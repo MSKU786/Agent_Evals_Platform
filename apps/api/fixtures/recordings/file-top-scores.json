@@ -1,0 +1,19 @@
+{
+  "finalAnswer": "Sorted by score desc: charlie 88, frank 71, dave 55.\nTOP: charlie, frank, dave",
+  "steps": [
+    {
+      "role": "assistant",
+      "content": "Sorted by score desc: charlie 88, frank 71, dave 55.\nTOP: charlie, frank, dave",
+      "finishReason": "stop"
+    }
+  ],
+  "usage": {
+    "inputTokens": 1200,
+    "outputTokens": 40,
+    "reasoningTokens": 0,
+    "cacheReadTokens": 0,
+    "cacheWriteTokens": 0,
+    "toolCallCount": 0,
+    "costUsd": 0.0009
+  }
+}

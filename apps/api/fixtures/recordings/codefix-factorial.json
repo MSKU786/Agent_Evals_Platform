@@ -1,0 +1,19 @@
+{
+  "finalAnswer": "The loop must be range(1, n+1). factorial(5) = 120.\nANSWER: 120",
+  "steps": [
+    {
+      "role": "assistant",
+      "content": "The loop must be range(1, n+1). factorial(5) = 120.\nANSWER: 120",
+      "finishReason": "stop"
+    }
+  ],
+  "usage": {
+    "inputTokens": 1200,
+    "outputTokens": 40,
+    "reasoningTokens": 0,
+    "cacheReadTokens": 0,
+    "cacheWriteTokens": 0,
+    "toolCallCount": 0,
+    "costUsd": 0.0009
+  }
+}

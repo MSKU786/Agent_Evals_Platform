@@ -21,3 +21,19 @@
   build path is to allow egress to that CDN or build in CI and load the image.
 - **Memory tasks** test only within-experiment recall across two sessions, not
   long-term learning.
+- **Grading is on the final-answer text only.** The platform currently scores a
+  trial from its final reply text (the regex/script/judge graders see
+  `finalAnswer`; the script grader additionally gets it as `agent_answer.txt` /
+  `$FINAL_ANSWER`). It does **not** inject task fixtures into the agent's sandbox,
+  nor recover the agent's output files for grading — the Hermes run happens in a
+  throwaway Docker volume that is removed right after the run. Consequently the
+  core suite is designed to be **answer-checkable**: any input the agent needs is
+  embedded inline in the prompt, and the graded result is always text in the
+  reply (e.g. "read this CSV and output per-region totals as JSON"; "fix this
+  function and report what it now returns"). True file-producing tasks —
+  fixtures copied in, the agent's work dir copied out, a `sandboxDir` threaded
+  through runner → executor → grader, and a test runner (pytest) available in the
+  grader env — are **scoped but deferred** under time constraints. This is a known
+  limit, not a bug: `TaskSpec.fixtures` and the grader `sandboxDir` hooks already
+  exist in the schema, so wiring them is additive and does not change the data
+  model.

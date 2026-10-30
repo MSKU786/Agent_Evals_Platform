@@ -1,0 +1,19 @@
+{
+  "finalAnswer": "ap-south-1",
+  "steps": [
+    {
+      "role": "assistant",
+      "content": "ap-south-1",
+      "finishReason": "stop"
+    }
+  ],
+  "usage": {
+    "inputTokens": 1200,
+    "outputTokens": 40,
+    "reasoningTokens": 0,
+    "cacheReadTokens": 0,
+    "cacheWriteTokens": 0,
+    "toolCallCount": 0,
+    "costUsd": 0.0009
+  }
+}

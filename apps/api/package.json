@@ -12,6 +12,7 @@
     "prisma:push": "prisma db push --skip-generate",
     "seed": "tsx prisma/seed.ts",
     "derisk": "tsx scripts/derisk.ts",
+    "smoke": "tsx scripts/smoke-suite.ts",
     "test": "vitest run"
   },
   "dependencies": {

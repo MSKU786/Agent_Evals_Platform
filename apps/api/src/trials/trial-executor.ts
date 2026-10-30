@@ -34,6 +34,24 @@ export class TrialExecutor {
       },
     };
 
+    // Idempotency guard. pg-boss can deliver the same job twice (a slow trial
+    // outliving its visibility window, or a batch-mate throwing and failing the
+    // whole batch). A trial that already finished must NEVER be re-run or
+    // overwritten — otherwise a retry can flip a passed trial to failed, which
+    // is exactly what we saw. A `failed` trial is still allowed through so the
+    // one configured infra-retry can re-run it.
+    const existing = await this.prisma.trial.findUnique({
+      where,
+      select: { status: true },
+    });
+    if (existing?.status === "done") {
+      this.logger.warn(
+        `trial already done — ignoring duplicate delivery ` +
+          `(task=${job.taskId} config=${job.configId} rep=${job.repIndex})`,
+      );
+      return;
+    }
+
     const [task, config] = await Promise.all([
       this.prisma.task.findUniqueOrThrow({ where: { id: job.taskId } }),
       this.prisma.agentConfig.findUniqueOrThrow({ where: { id: job.configId } }),
