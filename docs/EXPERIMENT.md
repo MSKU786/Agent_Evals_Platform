@@ -141,6 +141,30 @@ and each task is cleanly 0 or 1. Against a live model the 5 repeats would diverg
 and the report's `flaky` flag would light up on borderline tasks — the machinery
 (`flaky` in `perTask`) is already wired and exercised by the stats tests.
 
+## Reproduce it
+
+From a clean checkout, in demo mode (no key, no cost):
+
+```bash
+cp .env.example .env
+docker compose up -d          # seeds the core suite + flash / flash-lite configs
+
+# resolve ids, then create 10 x 2 x 5 = 100 trials via the API
+SUITE=$(curl -s localhost:3000/suites  | python -c "import sys,json;print(json.load(sys.stdin)[0]['id'])")
+LITE=$(curl -s localhost:3000/configs | python -c "import sys,json;print(next(c['id'] for c in json.load(sys.stdin) if c['name']=='flash-lite'))")
+FLASH=$(curl -s localhost:3000/configs | python -c "import sys,json;print(next(c['id'] for c in json.load(sys.stdin) if c['name']=='flash'))")
+
+curl -s -X POST localhost:3000/experiments -H 'content-type: application/json' \
+  -d "{\"suiteId\":\"$SUITE\",\"configIds\":[\"$LITE\",\"$FLASH\"],\"baselineConfigId\":\"$LITE\",\"repeats\":5}"
+# -> { "id": "<experimentId>", "plannedTrials": 100 }
+
+# when finished (~1 min), read the report (or open the UI at /experiments/<id>)
+curl -s "localhost:3000/experiments/<experimentId>/report" | python -m json.tool
+```
+
+Seed `1` and 10,000 resamples make the verdict, CIs and p-value deterministic, so
+a re-run reproduces these exact numbers.
+
 ## Conclusion
 
 Changing only the model tier produces a **detectable improvement** (+40 pp,

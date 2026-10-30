@@ -1,17 +1,21 @@
 # Known limits
 
-(Expanded in Phase 6; early entries recorded here as decisions are made.)
-
 - **Statistical power:** 10 tasks only detects large effects (~20–25+ points);
-  small real improvements will read as "no detectable difference".
-- **Repeats k = 3, not 5 (cost-driven).** The real experiment is 10 tasks × 2
-  configs × **3** repeats = **60 trials** rather than 100. Each trial is a paid
-  OpenRouter call, so k = 3 keeps spend down. k = 5 would tighten the confidence
-  intervals with more budget; the method is unchanged, only the sample per task.
+  small real improvements will read as "no detectable difference". In the shipped
+  run this shows up directly: the difference CI excludes 0 (verdict **Better**)
+  while the sign-flip permutation p-value is 0.127 — not a contradiction, but the
+  honest low-power regime of n=10. More tasks, not a different test, is the fix.
+  See [EXPERIMENT.md](EXPERIMENT.md) ("On significance and power").
+- **Repeats k = 5 here; a paid live run may use fewer.** The shipped experiment
+  is 10 × 2 × **5** = **100 trials**, which the free FakeRunner makes costless. A
+  *live* run on a paid provider might drop to k = 3 (60 trials) to keep spend
+  down; the method is identical, only the sample per task changes, widening the
+  intervals slightly.
 - **Gemini free tier is unusable under agent load.** It exhausts its quota in a
-  handful of messages and can't sustain an agent session, so the real experiment
-  runs on **OpenRouter** (paid, per-trial cost). Gemini remains fully supported
-  as a provider; switching back is a one-line config/env change (see DESIGN.md).
+  handful of messages and can't sustain an agent session, so a *live* run would
+  use **OpenRouter** (paid, per-trial cost). Gemini remains fully supported as a
+  provider; switching back is a one-line config/env change (see DESIGN.md). (The
+  shipped run itself used `RUNNER=fake` — see the recorded-trajectories note below.)
 - **Provider drift:** the same model id can change behaviour over time; old
   experiments are not exactly reproducible. The Hermes image is pinned by digest.
 - **Isolation is per-process** (fresh Docker volume per trial), not a hardened
